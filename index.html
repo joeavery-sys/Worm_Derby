@@ -1,0 +1,183 @@
+<!DOCTYPE html>
+<html>
+<head>
+    <style>
+        body { font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif; display: flex; flex-direction: column; align-items: center; background: #1a1a1a; color: #eee; margin: 20px; }
+        canvas { background: #2d1e12; border: 3px solid #444; border-radius: 12px; box-shadow: 0 10px 30px rgba(0,0,0,0.5); }
+        .controls { margin: 20px; }
+        .btn { padding: 12px 24px; font-size: 16px; font-weight: bold; cursor: pointer; background: #8b4513; border: none; color: white; border-radius: 8px; transition: 0.2s; }
+        .btn:hover { background: #a0522d; transform: scale(1.05); }
+        table { border-collapse: collapse; width: 600px; background: #222; border-radius: 8px; overflow: hidden; }
+        th, td { border-bottom: 1px solid #333; padding: 12px; text-align: center; }
+        th { background: #333; color: #aaa; text-transform: uppercase; font-size: 12px; }
+    </style>
+</head>
+<body>
+
+    <h2>Worm Derby: Chaotic Edition</h2>
+    <canvas id="raceTrack" width="800" height="450"></canvas>
+
+    <div class="controls">
+        <button class="btn" onclick="startRace()">Release the Worms!</button>
+    </div>
+
+    <table id="statsTable">
+        <thead>
+            <tr>
+                <th>Worm</th>
+                <th>Food Eaten</th>
+                <th>Finish Time</th>
+            </tr>
+        </thead>
+        <tbody id="statsBody"></tbody>
+    </table>
+
+<script>
+const canvas = document.getElementById('raceTrack');
+const ctx = canvas.getContext('2d');
+const colors = ['#FF5555', '#55FF55', '#55AAFF', '#FFFF55', '#FF88FF'];
+const names = ['Crimson Crawler', 'Neon Niggler', 'Sky Slider', 'Lemon Looper', 'Petal Prowler'];
+
+let worms = [];
+let food = [];
+let racing = false;
+let startTime = 0;
+
+function init() {
+    worms = colors.map((color, i) => ({
+        x: 30,
+        y: 60 + (i * 80),
+        baseY: 60 + (i * 80), // Their "lane" center
+        color: color,
+        name: names[i],
+        foodCount: 0,
+        finishTime: null,
+        angle: 0, // For the wiggle
+        verticalVel: 0, // Current up/down momentum
+        finished: false
+    }));
+    
+    food = [];
+    for(let i = 0; i < 25; i++) {
+        food.push({ 
+            x: 80 + Math.random() * 650, 
+            y: 20 + Math.random() * 410, 
+            eaten: false 
+        });
+    }
+    updateStats();
+}
+
+function draw() {
+    ctx.clearRect(0, 0, canvas.width, canvas.height);
+    
+    // Track Markings
+    ctx.strokeStyle = "rgba(255,255,255,0.2)";
+    ctx.setLineDash([10, 10]);
+    ctx.beginPath(); ctx.moveTo(60, 0); ctx.lineTo(60, 450); ctx.stroke(); // Start
+    ctx.strokeStyle = "rgba(255,50,50,0.5)";
+    ctx.beginPath(); ctx.moveTo(740, 0); ctx.lineTo(740, 450); ctx.stroke(); // Finish
+    ctx.setLineDash([]);
+
+    // Food (Crumb style)
+    food.forEach(f => {
+        if (!f.eaten) {
+            ctx.fillStyle = "#ffd700";
+            ctx.beginPath(); ctx.arc(f.x, f.y, 3, 0, Math.PI * 2); ctx.fill();
+        }
+    });
+
+    // Draw Worms
+    worms.forEach(worm => {
+        ctx.fillStyle = worm.color;
+        for (let i = 8; i >= 0; i--) {
+            // Draw trail/segments
+            let segmentX = worm.x - (i * 6);
+            // Add a little lag to the segments for a curving effect
+            let segmentY = worm.y + Math.sin((worm.angle) - (i * 0.5)) * 4;
+            ctx.beginPath();
+            ctx.arc(segmentX, segmentY, 8 - (i * 0.5), 0, Math.PI * 2);
+            ctx.fill();
+        }
+    });
+
+    if (racing) {
+        update();
+    }
+    requestAnimationFrame(draw);
+}
+
+function update() {
+    let allFinished = true;
+    
+    worms.forEach(worm => {
+        if (!worm.finished) {
+            allFinished = false;
+
+            // 1. CHOTIC MOVEMENT LOGIC
+            // Horizontal progress is mostly steady but varies slightly
+            worm.x += (Math.random() * 1.5) + 0.5;
+
+            // Vertical "Wander" - Adjust momentum randomly
+            worm.verticalVel += (Math.random() - 0.5) * 0.5;
+            
+            // 2. FOOD ATTRACTION (The "Smell" Logic)
+            food.forEach(f => {
+                if (!f.eaten) {
+                    let dist = Math.hypot(worm.x - f.x, worm.y - f.y);
+                    if (dist < 60) { // If food is close, steer toward it
+                        worm.verticalVel += (f.y > worm.y ? 0.2 : -0.2);
+                    }
+                    if (dist < 12) { // Eat it!
+                        f.eaten = true;
+                        worm.foodCount++;
+                        updateStats();
+                    }
+                }
+            });
+
+            // Apply friction to vertical movement so they don't fly off screen
+            worm.verticalVel *= 0.95; 
+            worm.y += worm.verticalVel;
+
+            // Keep them on the track (Bounce off top/bottom)
+            if (worm.y < 20 || worm.y > 430) worm.verticalVel *= -1;
+
+            worm.angle += 0.15; // Animation speed
+
+            // 3. FINISH LINE
+            if (worm.x >= 740) {
+                worm.finished = true;
+                worm.finishTime = ((Date.now() - startTime) / 1000).toFixed(2) + "s";
+                updateStats();
+            }
+        }
+    });
+
+    if (allFinished) racing = false;
+}
+
+function updateStats() {
+    const body = document.getElementById('statsBody');
+    body.innerHTML = worms.map(w => `
+        <tr>
+            <td style="color:${w.color}; font-weight:bold">${w.name}</td>
+            <td>${w.foodCount}</td>
+            <td>${w.finishTime || '<span style="color:#666">Racing...</span>'}</td>
+        </tr>
+    `).join('');
+}
+
+function startRace() {
+    if (racing) return;
+    init();
+    racing = true;
+    startTime = Date.now();
+}
+
+// Kick off animation loop
+init();
+draw();
+</script>
+</body>
+</html>
